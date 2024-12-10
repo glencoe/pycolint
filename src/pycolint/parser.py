@@ -105,28 +105,38 @@ def parse(h: list[Token]) -> list[Problem]:
             stack.append(MSG(unwind_stack(0)))
         consume_token()
 
+    P = ProblemType
+
+    def add_problem(t: ProblemType):
+        problems.append(Problem(t, current_token()))
+
+    def add_problem_for_prev_token(t: ProblemType):
+        if not isinstance(stack[-1], Token):
+            raise ValueError("cannot use Expression to highlight problem")
+        problems.append(Problem(t, stack[-1]))
+
+    def before_eof():
+        return next_token().kind == K.EOF
+
     def nl():
         if not HDR.in_stack():
             if START.on_stack():
-                problems.append(
-                    Problem(ProblemType.EMPTY_HDR, cast(Token, current_token()))
-                )
+                add_problem(P.EMPTY_HDR)
             elif not TYPE.in_stack():
-                problems.append(Problem(ProblemType.NO_TYPE, cast(Token, stack[-1])))
+                add_problem_for_prev_token(P.NO_TYPE)
+
             if isinstance(stack[-1], Token) and stack[-1].kind == K.DOT:
-                problems.append(
-                    Problem(ProblemType.HDR_ENDS_IN_DOT, cast(Token, stack[-1]))
-                )
+                add_problem_for_prev_token(P.HDR_ENDS_IN_DOT)
 
             hdr = HDR(unwind_stack(0))
             stack.append(hdr)
         else:
             if HDR.on_stack():
                 stack.append(HDR_BDY_SEP())
-                if next_token().kind == K.EOF:
-                    problems.append(Problem(ProblemType.EMPTY_BODY, current_token()))
+                if before_eof():
+                    add_problem(P.EMPTY_BODY)
             elif HDR_BDY_SEP.on_stack():
-                problems.append(Problem(ProblemType.EMPTY_BODY, current_token()))
+                add_problem(P.EMPTY_BODY)
 
         if next_token().kind == K.EOF:
             stack.append(MSG(unwind_stack(0)))
@@ -134,24 +144,21 @@ def parse(h: list[Token]) -> list[Problem]:
 
     def word():
         if HDR.on_stack():
-            problems.append(Problem(ProblemType.MISSING_BDY_SEP, current_token()))
+            add_problem(P.MISSING_BDY_SEP)
         to_stack()
 
     def divider():
-        ct = current_token()
-        consume_token()
         if not TYPE.in_stack() and not HDR.in_stack():
             stack.append(TYPE(unwind_stack(0)))
-            if len(ct.value) > 2:
-                problems.append(
-                    Problem(ProblemType.TOO_MUCH_WHITESPACE_AFTER_COLON, ct)
-                )
+            if len(current_token().value) > 2:
+                add_problem(P.TOO_MUCH_WHITESPACE_AFTER_COLON)
+        consume_token()
 
     def cp():
         if not SCOPE.in_stack() and not HDR.in_stack() and not TYPE.in_stack():
             top = stack[-1]
             if isinstance(top, Token) and top.kind != K.WORD:
-                problems.append(Problem(ProblemType.EMPTY_SCOPE, current_token()))
+                add_problem(P.EMPTY_SCOPE)
         consume_token()
 
     actions = {
@@ -182,7 +189,7 @@ Queue:
     while current_token().kind != K.EOF:
         ct = current_token()
         if ct.column <= 50 and ct.column + len(ct.value) > 50:
-            problems.append(Problem(ProblemType.TOO_LONG_HDR, ct))
+            add_problem(P.TOO_LONG_HDR)
         log.debug(build_debug_msg())
         actions[ct.kind]()
 
@@ -191,10 +198,5 @@ Queue:
         raise ValueError("failed to parse msg")
     else:
         if cast(Expression, stack[0]).sub == [START()]:
-            problems.append(
-                Problem(
-                    ProblemType.EMPTY_HDR,
-                    Token(K.EMPTY_LINE, value="", column=0, line=0),
-                )
-            )
+            add_problem(P.EMPTY_HDR)
     return problems
