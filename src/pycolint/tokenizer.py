@@ -1,5 +1,6 @@
 import re
 from enum import Enum
+from dataclasses import dataclass
 
 
 class Kind(Enum):
@@ -12,6 +13,14 @@ class Kind(Enum):
     DOT = "DOT"
     SKIP = "SKIP"
     WORD = "WORD"
+
+
+@dataclass(frozen=True, eq=True)
+class Token:
+    kind: Kind
+    value: str
+    column: int
+    line: int
 
 
 class Tokenizer:
@@ -27,15 +36,25 @@ class Tokenizer:
         Kind.WORD: r"[^\s().:]+",
     }
 
-    def __call__(self, text: str) -> list[tuple[Kind, str]]:
+    def __call__(self, text: str) -> list[Token]:
         regex = "|".join(
             "(?P<{name}>{token})".format(name=name.value, token=token)
             for name, token in self.tokens.items()
         )
-        tokens: list[tuple[Kind, str]] = []
+        tokens: list[Token] = []
+        line_start = 0
+        line = 1
         for mo in re.finditer(regex, text):
             kind = Kind[mo.lastgroup] if mo.lastgroup is not None else None
             value = mo.group()
-            if kind is not None and kind != Kind.SKIP:
-                tokens.append((kind, value))
+            column = mo.start() - line_start + 1
+            if kind is not None:
+                match kind:
+                    case Kind.SKIP:
+                        continue
+                    case _:
+                        tokens.append(Token(kind, value, column, line))
+                        if kind == Kind.EOL:
+                            line_start = mo.start()
+
         return tokens

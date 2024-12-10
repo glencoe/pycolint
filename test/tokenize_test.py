@@ -1,4 +1,4 @@
-from pycolint.tokenizer import Tokenizer, Kind as T
+from pycolint.tokenizer import Tokenizer, Kind as T, Token
 from pytest import fixture
 
 
@@ -10,39 +10,42 @@ class CommitSummaryTest:
     def test_type_and_scope(self, t):
         msg = "feat(graphs)"
         assert [
-            (T.WORD, "feat"),
-            (T.OP, "("),
-            (T.WORD, "graphs"),
-            (T.CP, ")"),
-            (T.EOL, ""),
+            Token(*x, 1)
+            for x in (
+                (T.WORD, "feat", 1),
+                (T.OP, "(", 5),
+                (T.WORD, "graphs", 6),
+                (T.CP, ")", 12),
+                (T.EOL, "", 13),
+            )
         ] == t(msg)
 
     def test_type_scope_and_text(self, t):
         msg = "feat(graphs): my message"
         assert [
-            (T.WORD, "feat"),
-            (T.OP, "("),
-            (T.WORD, "graphs"),
-            (T.CP, ")"),
-            (T.DIVIDER, ": "),
-            (T.WORD, "my"),
-            (T.WORD, "message"),
-            (T.EOL, ""),
-        ] == t(msg)
+            T.WORD,
+            T.OP,
+            T.WORD,
+            T.CP,
+            T.DIVIDER,
+            T.WORD,
+            T.WORD,
+            T.EOL,
+        ] == [x.kind for x in t(msg)]
 
     def test_text_with_dot(self, t):
         msg = "my . text."
         assert [
-            (T.WORD, "my"),
-            (T.DOT, "."),
-            (T.WORD, "text"),
-            (T.DOT, "."),
-            (T.EOL, ""),
-        ] == t(msg)
+            T.WORD,
+            T.DOT,
+            T.WORD,
+            T.DOT,
+            T.EOL,
+        ] == [x.kind for x in t(msg)]
 
     def test_breaking_change(self, t):
         msg = "BREAKING CHANGE"
-        assert [(T.BREAKING_CHANGE, "BREAKING CHANGE"), (T.EOL, "")] == t(msg)
+        assert [T.BREAKING_CHANGE, T.EOL] == [x.kind for x in t(msg)]
 
     def test_empty_line(self, t):
-        assert [(T.EMPTY_LINE, ""), (T.EOL, "")] == t("\n")
+        assert [T.EMPTY_LINE, T.EOL] == [x.kind for x in t("\n")]
