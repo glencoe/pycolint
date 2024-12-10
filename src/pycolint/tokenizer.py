@@ -15,6 +15,7 @@ class Kind(Enum):
     WORD = "WORD"
     EOF = "EOF"
     START = "START"
+    EXCL = "EXCL"
 
 
 @dataclass(frozen=True, eq=True)
@@ -35,7 +36,8 @@ class Tokenizer:
         Kind.CP: r"\)",
         Kind.DOT: r"\.",
         Kind.SKIP: r"\s+",
-        Kind.WORD: r"[^\s().:]+",
+        Kind.EXCL: r"!",
+        Kind.WORD: r"[^\s().:!]+",
     }
 
     def __call__(self, text: str) -> list[Token]:

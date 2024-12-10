@@ -34,6 +34,12 @@ class CommitSummaryTest:
             T.EOL,
         ] == [x.kind for x in t(msg)]
 
+    def test_find_exclamation(self, t):
+        msg = "feat!: my feature"
+        assert [T.WORD, T.EXCL, T.DIVIDER, T.WORD, T.WORD, T.EOL] == [
+            x.kind for x in t(msg)
+        ]
+
     def test_text_with_dot(self, t):
         msg = "my . text."
         assert [
