@@ -28,7 +28,7 @@ class Token:
 
 class Tokenizer:
     tokens: dict[Kind, str] = {
-        Kind.DIVIDER: r": (?=\S)",
+        Kind.DIVIDER: r": ",
         Kind.EMPTY_LINE: r"^$",
         Kind.BREAKING_CHANGE: r"BREAKING-CHANGE|(?:BREAKING CHANGE)",
         Kind.EOL: r"$",

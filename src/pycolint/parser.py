@@ -15,6 +15,7 @@ class ProblemType(Enum):
     NO_TYPE = 1
     HDR_ENDS_IN_DOT = 2
     EMPTY_SCOPE = 3
+    TOO_LONG_HDR = 4
 
 
 @dataclass
@@ -124,11 +125,11 @@ def parse(h: list[Token]) -> list[Problem]:
             stack.append(TYPE(unwind_stack(0)))
 
     def cp():
-        if not SCOPE.in_stack() and not HDR.in_stack():
+        if not SCOPE.in_stack() and not HDR.in_stack() and not TYPE.in_stack():
             top = stack[-1]
             if isinstance(top, Token) and top.kind != K.WORD:
                 problems.append(Problem(ProblemType.EMPTY_SCOPE, current_token()))
-            consume_token()
+        consume_token()
 
     actions = {
         K.START: to_stack,
@@ -139,6 +140,7 @@ def parse(h: list[Token]) -> list[Problem]:
         K.OP: to_stack,
         K.CP: cp,
         K.EOL: eol,
+        K.EXCL: to_stack,
     }
     log = logging.getLogger(__name__)
 
@@ -156,8 +158,11 @@ Queue:
             """.format("\n".join(map(str, stack)), "\n".join(map(str, h)))
 
     while current_token().kind != K.EOF:
+        ct = current_token()
+        if ct.column <= 50 and ct.column + len(ct.value) > 50:
+            problems.append(Problem(ProblemType.TOO_LONG_HDR, ct))
         log.debug(build_debug_msg())
-        actions[h[0].kind]()
+        actions[ct.kind]()
 
     log.debug(build_debug_msg())
     if not MSG.matches(stack[0]):

@@ -59,3 +59,6 @@ class CommitSummaryTest:
 
     def test_empty_string(self, t):
         assert [T.EMPTY_LINE] == [x.kind for x in t("")]
+
+    def test_find_divider_with_more_whitespace(self, t):
+        assert T.DIVIDER == t("feat:  ")[1].kind
