@@ -19,6 +19,7 @@ class ProblemType(Enum):
     TOO_MUCH_WHITESPACE_AFTER_COLON = 5
     EMPTY_BODY = 6
     MISSING_BDY_SEP = 7
+    USE_SINGLE_WORD_FOR_SCOPE = 8
 
 
 @dataclass
@@ -155,10 +156,20 @@ def parse(h: list[Token]) -> list[Problem]:
         consume_token()
 
     def cp():
-        if not SCOPE.in_stack() and not HDR.in_stack() and not TYPE.in_stack():
+        if not SCOPE.in_stack() and not TYPE.in_stack():
             top = stack[-1]
             if isinstance(top, Token) and top.kind != K.WORD:
                 add_problem(P.EMPTY_SCOPE)
+
+            counter = 0
+            for t in stack:
+                if isinstance(t, Token):
+                    counter += 1
+                    if t.kind == K.OP:
+                        counter = 0
+            if counter > 1:
+                add_problem(P.USE_SINGLE_WORD_FOR_SCOPE)
+            stack.append(SCOPE(unwind_stack(1)))
         consume_token()
 
     actions = {

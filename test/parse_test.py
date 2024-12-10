@@ -26,7 +26,7 @@ class ParseHdrTest:
     def test_no_problems_from_later_parentheses(self):
         assert [] == parse(tokenize("feat: my ()"))
 
-    def test_no_problems_from_parentheses_after_scope(self):
+    def test_no_problems_from_parentheses_after_type(self):
         assert [] == parse(tokenize("feat(parser): msg with par ()"))
 
     def test_exclamation_mark_is_allowed(self):
@@ -61,4 +61,10 @@ class ParseHdrTest:
         ] == parse(tokenize("feat: msg\n"))
 
     def test_detect_missing_separator_for_body(self):
-        P.MISSING_BDY_SEP == parse(tokenize("feat: msg\nbody too close"))[0]
+        assert P.MISSING_BDY_SEP == parse(tokenize("feat: msg\nbody too close"))[0].type
+
+    def test_detect_whitespaces_in_scope(self):
+        assert (
+            P.USE_SINGLE_WORD_FOR_SCOPE
+            == parse(tokenize("feat(sc ope): scope"))[0].type
+        )
