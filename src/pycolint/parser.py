@@ -16,6 +16,9 @@ class ProblemType(Enum):
     HDR_ENDS_IN_DOT = 2
     EMPTY_SCOPE = 3
     TOO_LONG_HDR = 4
+    TOO_MUCH_WHITESPACE_AFTER_COLON = 5
+    EMPTY_BODY = 6
+    MISSING_BDY_SEP = 7
 
 
 @dataclass
@@ -53,10 +56,8 @@ def parse(h: list[Token]) -> list[Problem]:
 
     stack: list[Expression | Token] = []
     problems = []
-    start = Token(K.START, value="", line=-1, column=-1)
     end = Token(K.EOF, value="", column=-1, line=-1)
     h.append(end)
-    h.insert(0, start)
 
     def consume_token():
         h.pop(0)
@@ -74,13 +75,19 @@ def parse(h: list[Token]) -> list[Problem]:
         def matches(self, o: object) -> bool:
             return matches_expr(o, self._t)
 
+        def on_stack(self) -> bool:
+            return len(stack) > 0 and self.matches(stack[-1])
+
         def in_stack(self) -> bool:
             return any(map(self.matches, stack))
 
         def __call__(self, sub: list["Expression"] | None = None) -> Expression:
             return expr(self._t, sub)
 
-    (MSG, HDR, TYPE, SCOPE) = tuple(map(ExprType, ("MSG", "HDR", "TYPE", "SCOPE")))
+    (MSG, HDR, TYPE, SCOPE, HDR_BDY_SEP, START) = tuple(
+        map(ExprType, ("MSG", "HDR", "TYPE", "SCOPE", "HDR_BDY_SEP", "START"))
+    )
+    stack.append(START())
 
     def unwind_stack(unwind_position):
         num_unwinds = len(stack) - unwind_position
@@ -98,31 +105,47 @@ def parse(h: list[Token]) -> list[Problem]:
             stack.append(MSG(unwind_stack(0)))
         consume_token()
 
-    def eol():
+    def nl():
         if not HDR.in_stack():
-            if len(stack) == 0 or (
-                len(stack) == 1
-                and isinstance(stack[-1], Token)
-                and stack[-1].kind == K.EMPTY_LINE
-            ):
-                problems.append(Problem(ProblemType.EMPTY_HDR, cast(Token, stack[-1])))
-            elif isinstance(stack[-1], Token) and stack[-1].kind == K.DOT:
+            if START.on_stack():
                 problems.append(
-                    Problem(ProblemType.HDR_ENDS_IN_DOT, cast(Token, stack[-1]))
+                    Problem(ProblemType.EMPTY_HDR, cast(Token, current_token()))
                 )
             elif not TYPE.in_stack():
                 problems.append(Problem(ProblemType.NO_TYPE, cast(Token, stack[-1])))
+            if isinstance(stack[-1], Token) and stack[-1].kind == K.DOT:
+                problems.append(
+                    Problem(ProblemType.HDR_ENDS_IN_DOT, cast(Token, stack[-1]))
+                )
 
             hdr = HDR(unwind_stack(0))
             stack.append(hdr)
+        else:
+            if HDR.on_stack():
+                stack.append(HDR_BDY_SEP())
+                if next_token().kind == K.EOF:
+                    problems.append(Problem(ProblemType.EMPTY_BODY, current_token()))
+            elif HDR_BDY_SEP.on_stack():
+                problems.append(Problem(ProblemType.EMPTY_BODY, current_token()))
+
         if next_token().kind == K.EOF:
             stack.append(MSG(unwind_stack(0)))
         consume_token()
 
+    def word():
+        if HDR.on_stack():
+            problems.append(Problem(ProblemType.MISSING_BDY_SEP, current_token()))
+        to_stack()
+
     def divider():
+        ct = current_token()
         consume_token()
         if not TYPE.in_stack() and not HDR.in_stack():
             stack.append(TYPE(unwind_stack(0)))
+            if len(ct.value) > 2:
+                problems.append(
+                    Problem(ProblemType.TOO_MUCH_WHITESPACE_AFTER_COLON, ct)
+                )
 
     def cp():
         if not SCOPE.in_stack() and not HDR.in_stack() and not TYPE.in_stack():
@@ -132,14 +155,13 @@ def parse(h: list[Token]) -> list[Problem]:
         consume_token()
 
     actions = {
-        K.START: to_stack,
-        K.EMPTY_LINE: empty_line,
+        K.NL: nl,
         K.DIVIDER: divider,
         K.DOT: to_stack,
-        K.WORD: to_stack,
+        K.WORD: word,
         K.OP: to_stack,
         K.CP: cp,
-        K.EOL: eol,
+        K.EOL: nl,
         K.EXCL: to_stack,
     }
     log = logging.getLogger(__name__)
@@ -168,7 +190,7 @@ Queue:
     if not MSG.matches(stack[0]):
         raise ValueError("failed to parse msg")
     else:
-        if cast(Expression, stack[0]).sub == [start]:
+        if cast(Expression, stack[0]).sub == [START()]:
             problems.append(
                 Problem(
                     ProblemType.EMPTY_HDR,

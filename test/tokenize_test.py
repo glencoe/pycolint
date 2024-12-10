@@ -55,10 +55,13 @@ class CommitSummaryTest:
         assert [T.BREAKING_CHANGE, T.EOL] == [x.kind for x in t(msg)]
 
     def test_new_line(self, t):
-        assert [T.EMPTY_LINE, T.EOL] == [x.kind for x in t("\n")]
+        assert [T.NL, T.EOL] == [x.kind for x in t("\n")]
 
     def test_empty_string(self, t):
-        assert [T.EMPTY_LINE] == [x.kind for x in t("")]
+        assert [T.EOL] == [x.kind for x in t("")]
 
     def test_find_divider_with_more_whitespace(self, t):
         assert T.DIVIDER == t("feat:  ")[1].kind
+
+    def test_parse_three_newline_as_three_newline_followed_by_eol(self, t):
+        assert [T.NL, T.NL, T.NL, T.EOL] == [x.kind for x in t("\n\n\n")]

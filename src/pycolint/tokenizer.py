@@ -16,6 +16,7 @@ class Kind(Enum):
     EOF = "EOF"
     START = "START"
     EXCL = "EXCL"
+    NL = "NL"
 
 
 @dataclass(frozen=True, eq=True)
@@ -28,8 +29,8 @@ class Token:
 
 class Tokenizer:
     tokens: dict[Kind, str] = {
-        Kind.DIVIDER: r": ",
-        Kind.EMPTY_LINE: r"^$",
+        Kind.DIVIDER: r": \s*",
+        Kind.NL: r"\n",
         Kind.BREAKING_CHANGE: r"BREAKING-CHANGE|(?:BREAKING CHANGE)",
         Kind.EOL: r"$",
         Kind.OP: r"\(",
@@ -58,8 +59,9 @@ class Tokenizer:
                         continue
                     case _:
                         tokens.append(Token(kind, value, column, line))
-                        if kind == Kind.EOL:
+                        if kind == Kind.NL:
                             line_start = mo.start()
+                            line += 1
 
         return tokens
 

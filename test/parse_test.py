@@ -5,7 +5,7 @@ from pycolint.tokenizer import Kind as T, Token, tokenize
 class ParseHdrTest:
     def test_empty_fails(self):
         assert [
-            Problem(P.EMPTY_HDR, Token(kind=T.EMPTY_LINE, value="", line=0, column=0))
+            Problem(P.EMPTY_HDR, Token(kind=T.EOL, value="", line=1, column=1))
         ] == parse(tokenize(""))
 
     def test_without_type_fails(self):
@@ -33,6 +33,32 @@ class ParseHdrTest:
         assert [] == parse(tokenize("feat!: msg"))
 
     def test_detect_too_long_hdr(self):
-        assert [
+        assert (
             Problem(P.TOO_LONG_HDR, Token(kind=T.WORD, value="bla", column=49, line=1))
-        ] == parse(tokenize("feat:                                           bla"))
+            == parse(tokenize("feat:                                           bla"))[
+                -1
+            ]
+        )
+
+    def test_detect_too_much_whitespace_after_colon(self):
+        assert (
+            Problem(
+                P.TOO_MUCH_WHITESPACE_AFTER_COLON,
+                Token(kind=T.DIVIDER, value=":  ", column=5, line=1),
+            )
+            == parse(tokenize("feat:  msg"))[0]
+        )
+
+    def test_let_divider_with_whitespace_in_the_middle_of_message_pass(self):
+        assert [] == parse(tokenize("feat: my new:  message"))
+
+    def test_pass_for_msg_body(self):
+        assert [] == parse(tokenize("feat: msg\n\nmy body"))
+
+    def test_detect_msg_with_empty_body(self):
+        assert [
+            Problem(P.EMPTY_BODY, Token(T.EOL, value="", column=2, line=2))
+        ] == parse(tokenize("feat: msg\n"))
+
+    def test_detect_missing_separator_for_body(self):
+        P.MISSING_BDY_SEP == parse(tokenize("feat: msg\nbody too close"))[0]
