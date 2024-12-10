@@ -1,23 +1,17 @@
-from pycolint.parser import parse, Problem as P
-from pycolint.tokenizer import Kind as T
+from pycolint.parser import parse, ProblemType as P, Problem
+from pycolint.tokenizer import Kind as T, Token, tokenize
 
 
 class ParseTest:
     def test_empty_header_fails(self):
-        assert [P.EMPTY_HDR] == parse([(T.EMPTY_LINE, ""), (T.EOL, "")])
+        assert [
+            Problem(P.EMPTY_HDR, Token(kind=T.EMPTY_LINE, value="", line=0, column=0))
+        ] == parse(tokenize(""))
 
     def test_header_without_type_fails(self):
-        assert [P.NO_TYPE] == parse(
-            [(T.WORD, "mytext"), (T.EOL, "")],
-        )
+        assert [
+            Problem(P.NO_TYPE, Token(kind=T.WORD, value="mytext", column=1, line=1))
+        ] == parse(tokenize("mytext"))
 
     def test_header_ending_with_dot_fails(self):
-        assert [P.HDR_ENDS_IN_DOT] == parse(
-            [
-                (T.WORD, "feat"),
-                (T.DIVIDER, ": "),
-                (T.WORD, "description"),
-                (T.DOT, "."),
-                (T.EOL, ""),
-            ]
-        )
+        assert [Problem(P.HDR_ENDS_IN_DOT, Token(T.DOT, value=".", column=18, line=1))]

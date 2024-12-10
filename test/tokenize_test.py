@@ -1,11 +1,12 @@
-from pycolint.tokenizer import Tokenizer, Kind as T, Token
+from pycolint.tokenizer import tokenize, Kind as T, Token
 from pytest import fixture
+from collections.abc import Callable
 
 
 class CommitSummaryTest:
     @fixture
-    def t(self) -> Tokenizer:
-        return Tokenizer()
+    def t(self) -> Callable[[str], list[Token]]:
+        return tokenize
 
     def test_type_and_scope(self, t):
         msg = "feat(graphs)"
@@ -47,5 +48,8 @@ class CommitSummaryTest:
         msg = "BREAKING CHANGE"
         assert [T.BREAKING_CHANGE, T.EOL] == [x.kind for x in t(msg)]
 
-    def test_empty_line(self, t):
+    def test_new_line(self, t):
         assert [T.EMPTY_LINE, T.EOL] == [x.kind for x in t("\n")]
+
+    def test_empty_string(self, t):
+        assert [T.EMPTY_LINE] == [x.kind for x in t("")]

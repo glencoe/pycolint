@@ -13,6 +13,8 @@ class Kind(Enum):
     DOT = "DOT"
     SKIP = "SKIP"
     WORD = "WORD"
+    EOF = "EOF"
+    START = "START"
 
 
 @dataclass(frozen=True, eq=True)
@@ -58,3 +60,8 @@ class Tokenizer:
                             line_start = mo.start()
 
         return tokens
+
+
+def tokenize(text: str) -> list[Token]:
+    t = Tokenizer()
+    return t(text)
