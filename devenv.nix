@@ -21,7 +21,7 @@
     shellcheck.enable = true;
     ruff.enable = true;
     mypy.enable = true;
-    mypy.args = ["-p" "pycolint"];
+    mypy.settings.binPath = "${config.env.DEVENV_STATE}/venv/bin/mypy";
     ripsecrets.enable = true;
     # vale.enable = true;
     yamlfmt.enable = true;
