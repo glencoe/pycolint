@@ -14,6 +14,7 @@ class ProblemType(Enum):
     EMPTY_HDR = 0
     NO_TYPE = 1
     HDR_ENDS_IN_DOT = 2
+    EMPTY_SCOPE = 3
 
 
 @dataclass
@@ -34,13 +35,7 @@ def _create_msg(p: ProblemType) -> str:
     return (empty_hdr, no_type)[p.value]()
 
 
-def parse(msg: list[Token]) -> list[Problem]:
-    problems = []
-    problems.extend(_parse_header(msg))
-    return problems
-
-
-def _parse_header(h: list[Token]) -> list[Problem]:
+def parse(h: list[Token]) -> list[Problem]:
     class ExpressionP(Protocol):
         type: str
         sub: list["ExpressionP"]
@@ -84,7 +79,7 @@ def _parse_header(h: list[Token]) -> list[Problem]:
         def __call__(self, sub: list["Expression"] | None = None) -> Expression:
             return expr(self._t, sub)
 
-    (MSG, HDR, TYPE) = tuple(map(ExprType, ("MSG", "HDR", "TYPE")))
+    (MSG, HDR, TYPE, SCOPE) = tuple(map(ExprType, ("MSG", "HDR", "TYPE", "SCOPE")))
 
     def unwind_stack(unwind_position):
         num_unwinds = len(stack) - unwind_position
@@ -128,12 +123,21 @@ def _parse_header(h: list[Token]) -> list[Problem]:
         if not TYPE.in_stack() and not HDR.in_stack():
             stack.append(TYPE(unwind_stack(0)))
 
+    def cp():
+        if not SCOPE.in_stack() and not HDR.in_stack():
+            top = stack[-1]
+            if isinstance(top, Token) and top.kind != K.WORD:
+                problems.append(Problem(ProblemType.EMPTY_SCOPE, current_token()))
+            consume_token()
+
     actions = {
         K.START: to_stack,
         K.EMPTY_LINE: empty_line,
         K.DIVIDER: divider,
         K.DOT: to_stack,
         K.WORD: to_stack,
+        K.OP: to_stack,
+        K.CP: cp,
         K.EOL: eol,
     }
     log = logging.getLogger(__name__)
