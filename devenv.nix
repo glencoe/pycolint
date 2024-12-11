@@ -7,13 +7,16 @@
 }: {
   packages = [
     pkgs.git
-    pkgs.antlr
-    pkgs.tree-sitter
+    pkgs.lazygit
+    pkgs.act
   ];
+
+  difftastic.enable = true;
 
   languages.python = {
     enable = true;
     uv.enable = true;
+    uv.sync.enable = true;
     version = "3.13";
   };
 
@@ -21,7 +24,7 @@
     shellcheck.enable = true;
     ruff.enable = true;
     mypy.enable = true;
-    mypy.settings.binPath = "${config.env.DEVENV_STATE}/venv/bin/mypy";
+    # mypy.settings.binPath = "${config.env.DEVENV_STATE}/venv/bin/mypy";
     ripsecrets.enable = true;
     # vale.enable = true;
     yamlfmt.enable = true;
