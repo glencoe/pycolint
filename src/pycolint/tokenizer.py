@@ -8,8 +8,8 @@ class Kind(Enum):
     DIVIDER = "DIVIDER"
     EMPTY_LINE = "EMPTY_LINE"
     EOL = "EOL"
-    OP = "OP"
-    CP = "CP"
+    OPAR = "OPAR"
+    CPAR = "CPAR"
     DOT = "DOT"
     SKIP = "SKIP"
     WORD = "WORD"
@@ -29,16 +29,16 @@ class Token:
 
 class Tokenizer:
     tokens: dict[Kind, str] = {
-        Kind.DIVIDER: r": \s*",
+        Kind.DIVIDER: r": ",
         Kind.NL: r"\n",
         Kind.BREAKING_CHANGE: r"BREAKING-CHANGE|(?:BREAKING CHANGE)",
-        Kind.EOL: r"$",
-        Kind.OP: r"\(",
-        Kind.CP: r"\)",
+        Kind.OPAR: r"\(",
+        Kind.CPAR: r"\)",
         Kind.DOT: r"\.",
         Kind.SKIP: r"\s+",
         Kind.EXCL: r"!",
         Kind.WORD: r"[^\s().:!]+",
+        Kind.EOL: r"$",
     }
 
     def __call__(self, text: str) -> list[Token]:
@@ -49,19 +49,19 @@ class Tokenizer:
         tokens: list[Token] = []
         line_start = 0
         line = 1
+        last_kind = Kind.NL
         for mo in re.finditer(regex, text):
             kind = Kind[mo.lastgroup] if mo.lastgroup is not None else None
             value = mo.group()
             column = mo.start() - line_start + 1
             if kind is not None:
-                match kind:
-                    case Kind.SKIP:
-                        continue
-                    case _:
-                        tokens.append(Token(kind, value, column, line))
-                        if kind == Kind.NL:
-                            line_start = mo.start()
-                            line += 1
+                if last_kind == Kind.SKIP and kind == Kind.SKIP:
+                    continue
+                else:
+                    tokens.append(Token(kind, value, column, line))
+                    if kind == Kind.NL:
+                        line_start = mo.start()
+                        line += 1
 
         return tokens
 

@@ -1,213 +1,488 @@
-from typing import NamedTuple, Protocol, cast
-from pycolint.msg_types import get_msg_types
-from pycolint.tokenizer import Kind as K, Token
-from enum import Enum
+from functools import partial, singledispatch, singledispatchmethod
+from enum import Enum, auto
+from typing import NamedTuple, Union, Callable
 from dataclasses import dataclass
+from .tokenizer import Token, Kind as T, tokenize
 import logging
+from .problem_types import ProblemType as P
 
 
-class CommitMsgError(Exception):
-    pass
+class ExpressionType(Enum):
+    START = auto()
+    MSG = auto()
+    HDR = auto()
+    REST = auto()
+    TYPE = auto()
+    SCOPE = auto()
+    DESCR = auto()
+    BDY_MSG_SEP = auto()
+    BODY = auto()
+    TRAIL = auto()
+    FOOTER = auto()
 
 
-class ProblemType(Enum):
-    EMPTY_HDR = 0
-    NO_TYPE = 1
-    HDR_ENDS_IN_DOT = 2
-    EMPTY_SCOPE = 3
-    TOO_LONG_HDR = 4
-    TOO_MUCH_WHITESPACE_AFTER_COLON = 5
-    EMPTY_BODY = 6
-    MISSING_BDY_SEP = 7
-    USE_SINGLE_WORD_FOR_SCOPE = 8
+_E = ExpressionType
 
 
 @dataclass
 class Problem:
-    type: ProblemType
+    type: P
     token: Token
 
 
-def _create_msg(p: ProblemType) -> str:
-    def empty_hdr() -> str:
-        return "commit msg header may not be empty"
+class Expression(NamedTuple):
+    type: ExpressionType
+    sub: list[Union["Expression", Token]]
 
-    def no_type() -> str:
-        return "no type specified, valid types are {}".format(
-            ", ".join(get_msg_types())
+
+class Stack:
+    def __init__(self) -> None:
+        self.data: list[Expression | Token] = []
+
+    def push(self, x: Expression | Token) -> None:
+        self.data.append(x)
+
+    def pop(self) -> Expression | Token:
+        return self.data.pop(-1)
+
+    def get_expressions(self) -> tuple[Expression, ...]:
+        return tuple(e for e in self.data if isinstance(e, Expression))
+
+    def last_expression(self) -> Expression | None:
+        exprs = self.get_expressions()
+        if len(exprs) > 0:
+            return exprs[-1]
+        return None
+
+    def reduce(
+        self,
+        exp: ExpressionType,
+        remove: int,
+        select: tuple[int, ...],
+    ) -> None:
+        removed = list(reversed([self.pop() for _ in range(remove)]))
+        selected = []
+        for s in select:
+            selected.append(removed[s])
+        self.push(Expression(exp, selected))
+
+    def top(self) -> Expression | Token:
+        return self.data[-1]
+
+
+class TokenQueue:
+    def __init__(self, data: list[Token]):
+        self._data = data
+
+    def current(self) -> Token:
+        return self._data[0]
+
+    def advance(self) -> None:
+        self._data.pop(0)
+
+    def before_eof(self) -> bool:
+        return self._data[0].kind == T.EOF
+
+
+class ProblemList:
+    def __init__(self, q: TokenQueue, data: list[Problem]):
+        self._q = q
+        self._data = data
+
+    def add_problem(self, p: P) -> None:
+        self._data.append(Problem(p, self._q.current()))
+
+
+@dataclass
+class Rule:
+    """
+    Empty set matches nothing, None matches everything
+    """
+
+    top_of_stack: Expression | ExpressionType | None | Token | T
+    current_token: Token | T | None
+    applicable_lhs: ExpressionType
+    fn: Callable[[], None]
+
+    def __str__(self) -> str:
+        def get_simplified_str(item) -> str:
+            if hasattr(item, "kind"):
+                t = item.kind.name
+            elif hasattr(item, "type"):
+                t = item.type.name
+            elif item is not None:
+                t = item.name
+            else:
+                t = "None"
+            return t
+
+        top = get_simplified_str(self.top_of_stack)
+        ct = get_simplified_str(self.current_token)
+        applicable_lhs = (
+            self.applicable_lhs if self.applicable_lhs is not None else None
+        )
+        return f"Rule:\n\ttop: {top}\n\tcurrent_token: {ct}\n\tapplicable lhs: {applicable_lhs}"
+
+
+class Parser:
+    def __init__(self) -> None:
+        self._log = logging.getLogger(__name__)
+        self._tokens = TokenQueue([])
+        self._stack = Stack()
+        self._stack.push(Expression(_E.START, []))
+        self._currently_parsing_lhs: dict[ExpressionType, int] = {
+            _E.MSG: 0,
+            _E.HDR: 0,
+            _E.TYPE: 0,
+        }
+        self._p = ProblemList(self._tokens, [])
+        self._rules: list[Rule] = []
+
+        def noop():
+            pass
+
+        self._current_rule: Rule = Rule(None, None, _E.MSG, noop)
+
+    def pretty_print_state(self) -> str:
+        token = self._tokens.current()
+        stack = "\n".join([str(d) for d in self._stack.data])
+        lhs = {k.name: v for k, v in self._currently_parsing_lhs.items()}
+        return f"""
+current token
+-------------
+{token}
+
+current stack
+------------
+{stack}
+
+
+active lhs
+-----------
+{lhs}
+        """
+
+    def advance(self) -> None:
+        self._tokens.advance()
+
+    def reduce(self) -> None:
+        new_type = self._current_rule.applicable_lhs
+        num_symbols = self._currently_parsing_lhs[new_type]
+        self._stack.reduce(new_type, num_symbols, tuple(range(num_symbols)))
+        for k in self._currently_parsing_lhs:
+            self._currently_parsing_lhs[k] -= num_symbols - 1
+        self._currently_parsing_lhs.pop(new_type)
+
+    def update_currently_parsing_lhs(self, lhs: ExpressionType) -> None:
+        self._currently_parsing_lhs[lhs] = self._currently_parsing_lhs.get(lhs, 0)
+
+    def push_token(self) -> None:
+        c = self._tokens.current()
+        for k in self._currently_parsing_lhs:
+            self._currently_parsing_lhs[k] += 1
+        self._stack.push(c)
+
+    def add_problem(self, p: P):
+        self._p.add_problem(p)
+
+    def done(self) -> bool:
+        t = self._stack.top()
+        return isinstance(t, Expression) and t.type == _E.MSG
+
+    def register_rule(self, handler: Rule) -> None:
+        if handler not in self._rules:
+            self._rules.append(handler)
+
+    def parse(self, tokens: TokenQueue, problems: ProblemList):
+        self._tokens = tokens
+        self._p = problems
+        while not self.done():
+            for h in self._rules:
+                if self.matches(h):
+                    self._log.debug(self.pretty_print_state())
+                    self._log.debug(f"\napplying {str(h)}\n\n")
+                    self._current_rule = h
+                    self._current_rule.fn()
+                    break
+
+    def matches(self, h: Rule) -> bool:
+        match_top_of_stack = self._create_matcher(h.top_of_stack)
+        match_current_token = self._create_matcher(h.current_token)
+
+        def match_lhs(currently_parsing_lhs):
+            if h.applicable_lhs is not None:
+                return h.applicable_lhs in currently_parsing_lhs.keys()
+            return True
+
+        return (
+            match_top_of_stack(self._stack.top())
+            and match_current_token(self._tokens.current())
+            and match_lhs(self._currently_parsing_lhs)
         )
 
-    return (empty_hdr, no_type)[p.value]()
+    @singledispatchmethod
+    def _create_matcher(self, left): ...
+
+    @_create_matcher.register
+    def _(self, left: Expression):
+        @singledispatch
+        def m(right):
+            pass
+
+        @m.register
+        def _(right: Expression) -> bool:
+            return left == right
+
+        @m.register
+        def _(right: object) -> bool:
+            return False
+
+        return m
+
+    @_create_matcher.register
+    def _(self, left: ExpressionType):
+        @singledispatch
+        def m(right):
+            pass
+
+        @m.register
+        def _(right: Expression):
+            return left == right.type
+
+        @m.register
+        def _(right: ExpressionType):
+            return left == right
+
+        @m.register
+        def _(right: object):
+            return False
+
+        return m
+
+    @_create_matcher.register
+    def _(self, left: T):
+        @singledispatch
+        def m(right):
+            pass
+
+        @m.register
+        def _(right: Token):
+            return left == right.kind
+
+        @m.register
+        def _(right: T):
+            return left == right
+
+        @m.register
+        def _(right: object):
+            return False
+
+        return m
+
+    @_create_matcher.register
+    def _(self, left: Token):
+        @singledispatch
+        def m(right):
+            pass
+
+        @m.register
+        def _(right: Token):
+            return left == right
+
+        @m.register
+        def _(right: object):
+            return False
+
+        return m
+
+    @_create_matcher.register
+    def _(self, left: None):
+        def m(x):
+            return True
+
+        return m
 
 
-def parse(h: list[Token]) -> list[Problem]:
-    class ExpressionP(Protocol):
-        type: str
-        sub: list["ExpressionP"]
+def create_parser():
+    """
+    last reduce expression uniquely determines what right hand rule we're building
+    at each moment, because
 
-    class Expression(NamedTuple):
-        type: str
-        sub: list["ExpressionP"]
+    MSG := HDR [REST]
+    HDR := TYPE [SCOPE] ': ' DESCR
+    SCOPE := '(' word ')'
+    DESCR := word | DESCR word
+    REST := '\n\n' BODY [FOOTER]
+    BODY := ANY_SYMBOLS
+    FOOTER := FOOTER_TAIL ': ' footer_tail ['\n' FOOTER]
+    FOOTER_TAIL := any_symbol_except_new_line | FOOTER_TAIL any_symbol_except_new_line
 
-    def matches_expr(o: object, type: str) -> bool:
-        return isinstance(o, Expression) and o.type == type
+    Tokens written in lowercase
+    """
+    E = _E
+    p = Parser()
 
-    def expr(type: str, sub=None):
-        return Expression(type, sub=sub if sub is not None else list())
+    def register_handler(
+        top_of_stack: ExpressionType | None | Token | T,
+        current_token: Token | T | None,
+        valid_lhs: ExpressionType,
+    ) -> Callable[[Callable[[], None]], Callable[[], None]]:
+        def _r(fn: Callable[[], None]):
+            p.register_rule(Rule(top_of_stack, current_token, valid_lhs, fn))
+            return fn
 
-    stack: list[Expression | Token] = []
-    problems = []
-    end = Token(K.EOF, value="", column=-1, line=-1)
-    h.append(end)
+        return _r
 
-    def consume_token():
-        h.pop(0)
+    rh = register_handler
 
-    def current_token():
-        return h[0]
+    @rh(E.START, T.SKIP, E.TYPE)
+    @rh(T.WORD, T.SKIP, E.TYPE)
+    @rh(T.WORD, T.WORD, E.TYPE)
+    def _():
+        p.add_problem(P.INVALID_TYPE)
+        p.advance()
 
-    def next_token():
-        return h[1]
+    @rh(T.WORD, T.DIVIDER, E.TYPE)
+    def _():
+        p.reduce()
+        p.update_currently_parsing_lhs(E.DESCR)
 
-    class ExprType:
-        def __init__(self, t: str):
-            self._t = t
+    @rh(E.START, T.WORD, E.HDR)
+    @rh(E.TYPE, T.WORD, E.HDR)
+    @rh(T.WORD, T.SKIP, E.HDR)
+    @rh(T.SKIP, T.WORD, E.HDR)
+    @rh(E.TYPE, T.WORD, E.DESCR)
+    @rh(E.TYPE, T.DOT, E.DESCR)
+    @rh(T.WORD, T.DOT, E.DESCR)
+    @rh(E.SCOPE, T.DOT, E.DESCR)
+    @rh(E.SCOPE, T.WORD, E.DESCR)
+    @rh(E.TYPE, T.EXCL, E.HDR)
+    @rh(E.SCOPE, T.EXCL, E.HDR)
+    @rh(T.EXCL, T.WORD, E.DESCR)
+    @rh(E.HDR, T.NL, E.BDY_MSG_SEP)
+    @rh(E.BDY_MSG_SEP, T.WORD, E.BODY)
+    @rh(T.WORD, T.WORD, E.BODY)
+    def _():
+        p.push_token()
+        p.advance()
 
-        def matches(self, o: object) -> bool:
-            return matches_expr(o, self._t)
+    @rh(E.HDR, T.NL, E.MSG)
+    def _():
+        p.update_currently_parsing_lhs(E.BDY_MSG_SEP)
 
-        def on_stack(self) -> bool:
-            return len(stack) > 0 and self.matches(stack[-1])
+    @rh(T.WORD, T.SKIP, E.BODY)
+    @rh(T.WORD, T.EOL, E.BODY)
+    @rh(E.TYPE, T.OPAR, E.SCOPE)
+    @rh(E.TYPE, T.DIVIDER, E.DESCR)
+    @rh(E.BDY_MSG_SEP, T.EOL, E.MSG)
+    def _():
+        p.advance()
 
-        def in_stack(self) -> bool:
-            return any(map(self.matches, stack))
+    @rh(T.NL, T.EOL, E.BDY_MSG_SEP)
+    @rh(E.HDR, T.EOL, E.BDY_MSG_SEP)
+    @rh(T.NL, T.NL, E.BDY_MSG_SEP)
+    @rh(T.WORD, T.CPAR, E.SCOPE)
+    @rh(E.DESCR, T.EOL, E.HDR)
+    @rh(E.BDY_MSG_SEP, T.NL, E.MSG)
+    def _():
+        p.reduce()
+        p.advance()
 
-        def __call__(self, sub: list["Expression"] | None = None) -> Expression:
-            return expr(self._t, sub)
+    @rh(E.BDY_MSG_SEP, T.EOF, E.MSG)
+    def _():
+        p.add_problem(P.EMPTY_BODY)
+        p.reduce()
 
-    (MSG, HDR, TYPE, SCOPE, HDR_BDY_SEP, START) = tuple(
-        map(ExprType, ("MSG", "HDR", "TYPE", "SCOPE", "HDR_BDY_SEP", "START"))
-    )
-    stack.append(START())
+    @rh(E.BDY_MSG_SEP, T.WORD, E.MSG)
+    def _():
+        p.update_currently_parsing_lhs(E.BODY)
 
-    def unwind_stack(unwind_position):
-        num_unwinds = len(stack) - unwind_position
-        taken = []
-        for _ in range(num_unwinds):
-            taken.append(stack.pop(-1))
-        return taken
+    @rh(E.TYPE, T.SKIP, E.HDR)
+    def _():
+        p.add_problem(P.TOO_MUCH_WHITESPACE_AFTER_COLON)
+        p.advance()
 
-    def to_stack():
-        stack.append(current_token())
-        consume_token()
+    @rh(T.WORD, T.CPAR, E.TYPE)
+    def _():
+        p.add_problem(P.UNOPENED_SCOPE)
+        p.reduce()
+        p.update_currently_parsing_lhs(E.DESCR)
+        p.advance()
 
-    def empty_line():
-        if next_token().kind == K.EOF:
-            stack.append(MSG(unwind_stack(0)))
-        consume_token()
+    @rh(E.TYPE, T.OPAR, E.HDR)
+    def _():
+        p.update_currently_parsing_lhs(E.SCOPE)
 
-    P = ProblemType
+    @rh(E.TYPE, T.EOL, E.DESCR)
+    def _():
+        p.add_problem(P.MISSING_DESCRIPTION)
+        p.reduce()
 
-    def add_problem(t: ProblemType):
-        problems.append(Problem(t, current_token()))
+    @rh(T.WORD, T.DIVIDER, E.SCOPE)
+    def _():
+        p.add_problem(P.UNCLOSED_SCOPE)
+        p.reduce()
 
-    def add_problem_for_prev_token(t: ProblemType):
-        if not isinstance(stack[-1], Token):
-            raise ValueError("cannot use Expression to highlight problem")
-        problems.append(Problem(t, stack[-1]))
+    @rh(E.SCOPE, T.DIVIDER, E.HDR)
+    @rh(T.EXCL, T.DIVIDER, E.HDR)
+    def _():
+        p.update_currently_parsing_lhs(E.DESCR)
+        p.advance()
 
-    def before_eof():
-        return next_token().kind == K.EOF
+    @rh(T.DOT, T.EOL, E.DESCR)
+    def _():
+        p.add_problem(P.HDR_ENDS_IN_DOT)
+        p.reduce()
 
-    def nl():
-        if not HDR.in_stack():
-            if START.on_stack():
-                add_problem(P.EMPTY_HDR)
-            elif not TYPE.in_stack():
-                add_problem_for_prev_token(P.NO_TYPE)
+    @rh(E.START, T.EOL, E.MSG)
+    @rh(E.START, T.EOL, E.HDR)
+    @rh(E.START, T.EOL, E.DESCR)
+    def _():
+        p.add_problem(P.EMPTY_HDR)
+        p.push_token()
+        p.advance()
 
-            if isinstance(stack[-1], Token) and stack[-1].kind == K.DOT:
-                add_problem_for_prev_token(P.HDR_ENDS_IN_DOT)
+    @rh(E.TYPE, T.DIVIDER, E.SCOPE)
+    def _():
+        p.add_problem(P.INVALID_TYPE)
+        p.reduce()
+        p.update_currently_parsing_lhs(E.DESCR)
+        p.advance()
 
-            hdr = HDR(unwind_stack(0))
-            stack.append(hdr)
-        else:
-            if HDR.on_stack():
-                stack.append(HDR_BDY_SEP())
-                if before_eof():
-                    add_problem(P.EMPTY_BODY)
-            elif HDR_BDY_SEP.on_stack():
-                add_problem(P.EMPTY_BODY)
+    @rh(E.TYPE, T.DIVIDER, E.HDR)
+    def _():
+        p.update_currently_parsing_lhs(E.DESCR)
+        p.advance()
 
-        if next_token().kind == K.EOF:
-            stack.append(MSG(unwind_stack(0)))
-        consume_token()
+    @rh(T.WORD, T.EXCL, E.TYPE)
+    @rh(T.NL, T.WORD, E.BDY_MSG_SEP)
+    @rh(T.WORD, T.OPAR, E.TYPE)
+    @rh(T.EOL, T.EOF, E.TYPE)
+    @rh(T.EOL, T.EOF, E.HDR)
+    @rh(T.EOL, T.EOF, E.MSG)
+    @rh(T.WORD, T.EOF, E.BODY)
+    @rh(E.BODY, T.EOF, E.MSG)
+    @rh(E.HDR, T.EOF, E.MSG)
+    @rh(T.WORD, T.NL, E.DESCR)
+    @rh(T.WORD, T.EOL, E.DESCR)
+    @rh(E.DESCR, T.NL, E.HDR)
+    def _():
+        p.reduce()
 
-    def word():
-        if HDR.on_stack():
-            add_problem(P.MISSING_BDY_SEP)
-        to_stack()
+    rh = partial(register_handler, valid_lhs=E.MSG)
 
-    def divider():
-        if not TYPE.in_stack() and not HDR.in_stack():
-            stack.append(TYPE(unwind_stack(0)))
-            if len(current_token().value) > 2:
-                add_problem(P.TOO_MUCH_WHITESPACE_AFTER_COLON)
-        consume_token()
+    @rh(None, None)
+    def default():
+        p.add_problem(P.ERROR)
+        p.reduce()
 
-    def cp():
-        if not SCOPE.in_stack() and not TYPE.in_stack():
-            top = stack[-1]
-            if isinstance(top, Token) and top.kind != K.WORD:
-                add_problem(P.EMPTY_SCOPE)
+    def parse(text: str) -> list[Problem]:
+        token_list = tokenize(text)
+        token_list.append(Token(T.EOF, value="", column=-1, line=-1))
+        tokens = TokenQueue(token_list)
 
-            counter = 0
-            for t in stack:
-                if isinstance(t, Token):
-                    counter += 1
-                    if t.kind == K.OP:
-                        counter = 0
-            if counter > 1:
-                add_problem(P.USE_SINGLE_WORD_FOR_SCOPE)
-            stack.append(SCOPE(unwind_stack(1)))
-        consume_token()
+        problems: list[Problem] = []
+        p.parse(tokens, ProblemList(tokens, problems))
+        return problems
 
-    actions = {
-        K.NL: nl,
-        K.DIVIDER: divider,
-        K.DOT: to_stack,
-        K.WORD: word,
-        K.OP: to_stack,
-        K.CP: cp,
-        K.EOL: nl,
-        K.EXCL: to_stack,
-    }
-    log = logging.getLogger(__name__)
-
-    def build_debug_msg():
-        return """
-Stack:
-------
-{}
-
-Queue:
-------
-{}
-
-
-            """.format("\n".join(map(str, stack)), "\n".join(map(str, h)))
-
-    while current_token().kind != K.EOF:
-        ct = current_token()
-        if ct.column <= 50 and ct.column + len(ct.value) > 50:
-            add_problem(P.TOO_LONG_HDR)
-        log.debug(build_debug_msg())
-        actions[ct.kind]()
-
-    log.debug(build_debug_msg())
-    if not MSG.matches(stack[0]):
-        raise ValueError("failed to parse msg")
-    else:
-        if cast(Expression, stack[0]).sub == [START()]:
-            add_problem(P.EMPTY_HDR)
-    return problems
+    return parse
