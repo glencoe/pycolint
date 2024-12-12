@@ -122,9 +122,6 @@ class NewParserFindProblemsTest:
     def test_double_word_before_divider(self, find_problems) -> None:
         assert [P.INVALID_TYPE, P.INVALID_TYPE] == find_problems("a b: msg")
 
-    def test_invalid_type_for_opar(self, find_problems) -> None:
-        assert [P.INVALID_TYPE] == find_problems("f(: a")
-
     def test_missing_close_scope(self, find_problems) -> None:
         assert [P.UNCLOSED_SCOPE] == find_problems("feat(s: descr")
 

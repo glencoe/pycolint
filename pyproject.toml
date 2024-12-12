@@ -19,8 +19,11 @@ dev = [
     "tomlkit>=0.13.2",
     "towncrier>=24.8.0",
     "opr",
+    "ipython>=8.30.0",
 ]
 
+[project.scripts]
+pycolint = "pycolint.main:main"
 
 [tool.mypy]
 files = ["src/pycolint/**/*.py"]

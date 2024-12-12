@@ -1,4 +1,5 @@
-from .parser import ProblemType as _P, Problem
+from .problem_types import ProblemType as _P
+from .parser import Problem
 import sys
 
 
@@ -25,6 +26,8 @@ If you have more to say, add an in-depth description of you changes in the msg b
 <body>""",
     _P.USE_SINGLE_WORD_FOR_SCOPE: """Scope should be specified with a single word""",
     _P.TOO_MUCH_WHITESPACE_AFTER_COLON: """The colon after the scope or type needs to be followed by exactly *one* space character.""",
+    _P.ERROR: """Failed to parse msg""",
+    _P.INVALID_TYPE: """Invalid type. Specify type like this '<type>: <summary>'""",
 }
 
 

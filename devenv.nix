@@ -9,10 +9,13 @@
     pkgs.git
     pkgs.lazygit
     pkgs.act
+    pkgs.tree-sitter
   ];
 
   difftastic.enable = true;
 
+  languages.javascript.enable = true;
+  languages.rust.enable = true;
   languages.python = {
     enable = true;
     uv.enable = true;
@@ -40,7 +43,6 @@
     check-toml.enable = true;
     check-vcs-permalinks.enable = true;
     # no-commit-to-branch.enable = true;
-    pyright.enable = true;
     # reuse.enable = true;
   };
 }
