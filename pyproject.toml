@@ -1,11 +1,15 @@
 [project]
 name = "pycolint"
-version = "0.2.0"
+version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
 ]
+
+[project.urls]
+github = "https://github.com/glencoe/pycolint"
+changelog = "https://github.com/glencoe/pycolint/blob/main/CHANGELOG.md"
 
 [dependency-groups]
 dev = [
@@ -20,6 +24,7 @@ dev = [
     "towncrier>=24.8.0",
     "opr",
     "ipython>=8.30.0",
+    "bump-my-version>=0.28.1",
 ]
 
 [project.scripts]
@@ -47,3 +52,40 @@ package_dir = "src"
 
 [tool.uv.sources]
 opr = { git = "https://github.com/glencoe/opr", rev = "0.3.0" }
+
+
+[tool.bumpversion]
+current_version = "0.1.0"
+parse = """(?x)
+    (?P<major>0|[1-9]\\d*)\\.
+    (?P<minor>0|[1-9]\\d*)\\.
+    (?P<patch>0|[1-9]\\d*)
+    (?:
+        -                             # dash separator for pre-release section
+        (?P<pre_label>[a-zA-Z-]+)         # pre-release label
+        (?P<pre_number>0|[1-9]\\d*)        # pre-release version number
+    )?                                # pre-release section is optional
+"""
+serialize = [
+    "{major}.{minor}.{patch}-{pre_label}{distance_to_latest_tag}", # automatically increase pre_number based on commits
+    "{major}.{minor}.{patch}",
+    ]
+search = "{current_version}"
+replace = "{new_version}"
+regex = false
+ignore_missing_version = false
+ignore_missing_files = false
+tag = false
+sign_tags = false
+tag_name = "v{new_version}"
+tag_message = "Bump version: {current_version} → {new_version}"
+allow_dirty = false
+commit = false
+message = "Bump version: {current_version} → {new_version}"
+commit_args = ""
+setup_hooks = []
+pre_commit_hooks = []
+post_commit_hooks = []
+
+[tool.bumpversion.parts.pre_label]
+values = ["dev", "rc"]
