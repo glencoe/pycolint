@@ -1,5 +1,7 @@
 name: run unit tests
-on: pull_request
+on:
+  - pull_request
+  - workflow_dispatch
 jobs:
   test:
     name: test with different python versions
