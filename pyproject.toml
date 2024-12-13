@@ -46,16 +46,12 @@ python_files = ["*_test.py", "test_*.py"]
 testpaths = ["test"]
 python_classes = ["*Test", "Test*"]
 
-[tool.towncrier]
-package = "pycolint"
-package_dir = "src"
-
 [tool.uv.sources]
 opr = { git = "https://github.com/glencoe/opr", rev = "0.3.0" }
 
 
 [tool.bumpversion]
-current_version = "0.1.0"
+current_version = "0.2.0"
 parse = """(?x)
     (?P<major>0|[1-9]\\d*)\\.
     (?P<minor>0|[1-9]\\d*)\\.
@@ -69,6 +65,7 @@ parse = """(?x)
 serialize = [
     "{major}.{minor}.{patch}-{pre_label}{distance_to_latest_tag}", # automatically increase pre_number based on commits
     "{major}.{minor}.{patch}",
+    "{major}.{minor}"
     ]
 search = "{current_version}"
 replace = "{new_version}"
@@ -88,4 +85,14 @@ pre_commit_hooks = []
 post_commit_hooks = []
 
 [tool.bumpversion.parts.pre_label]
-values = ["dev", "rc"]
+values = ["dev", "rc", "final"]
+optional_value = "final"
+
+[tool.towncrier]
+name = "pycolint"
+filename = "CHANGES.md"
+package = "pycolint"
+package_dir = "src"
+underlines = ["", "", ""]
+title_format = "## [{version}](https://github.com/glencoe/pycolint/tree/{version}) - {project_date}"
+issue_format = "[#{issue}](https://github.com/glencoe/pycolint/issues/{issue})"
