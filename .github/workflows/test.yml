@@ -1,0 +1,17 @@
+name: run unit tests
+on: pull_request
+jobs:
+  test:
+    name: test with different python versions
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - name: install latest version of uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+          python-version: ${{ matrix.python-version }}
+      - name: test with python ${{ matrix.python-version }}
+        run: uv run --frozen pytest
