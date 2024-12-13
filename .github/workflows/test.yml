@@ -6,6 +6,8 @@ jobs:
   test:
     name: test with different python versions
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     strategy:
       matrix:
         python-version: ["3.10"]
@@ -31,16 +33,16 @@ jobs:
           badge: true
           format: 'markdown'
           output: 'both'
-      - name: Publish Test Report
-        if: matrix.python-version == '3.10'
-        uses: dorny/test-reporter@v1
-        with:
-          name: test-results
-          path: ./pytest.xml
+      # - name: Publish Test Report
+      #   if: matrix.python-version == '3.10'
+      #   uses: dorny/test-reporter@v1
+      #   with:
+      #     name: test-results
+      #     path: ./pytest.xml
       - name: Add coverage pr comment
         uses: marocchino/sticky-pull-request-comment@v2
         with:
           recreate: true
-          path: code-coverage-result.md
+          path: ./code-coverage-results.md
       - name: Write to Job Summary
         run: cat code-coverage-results.md >> "$GITHUB_STEP_SUMMARY"
