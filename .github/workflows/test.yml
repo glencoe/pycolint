@@ -1,0 +1,44 @@
+name: run unit tests
+on: pull_request
+jobs:
+  test:
+    name: test with different python versions
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10"]
+    steps:
+      - name: checkout repo
+        uses: actions/checkout@main
+      - name: install latest version of uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+          python-version: ${{ matrix.python-version }}
+      - name: sync deps
+        run: uv sync
+      - name: test with python ${{ matrix.python-version }}
+        run: uv run --frozen coverage run -m pytest --junit-xml=pytest.xml
+      - name: create xml coverage report
+        run: uv run --frozen coverage xml
+      - name: Publish code coverage report
+        if: matrix.python-version == '3.10'
+        uses: irongut/CodeCoverageSummary@v1.3.0
+        with:
+          filename: ./coverage.xml
+          badge: true
+          format: 'markdown'
+          output: 'both'
+      - name: Publish Test Report
+        if: matrix.python-version == '3.10'
+        uses: dorny/test-reporter@v1
+        with:
+          name: test-results
+          path: ./pytest.xml
+      - name: Add coverage pr comment
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          recreate: true
+          path: code-coverage-result.md
+      - name: Write to Job Summary
+        run: cat code-coverage-results.md >> "$GITHUB_STEP_SUMMARY"

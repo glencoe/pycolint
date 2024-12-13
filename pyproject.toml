@@ -12,21 +12,28 @@ github = "https://github.com/glencoe/pycolint"
 changelog = "https://github.com/glencoe/pycolint/blob/main/CHANGELOG.md"
 
 [dependency-groups]
+
 dev = [
     "build>=1.2.2.post1",
-    "tomlkit>=0.13.2",
-    "pylsp-mypy>=0.6.9",
-    "pylsp-rope>=0.1.17",
     "pytest>=8.3.4",
-    "python-lsp-server>=1.12.0",
-    "ruff>=0.8.2",
-    "tomlkit>=0.13.2",
-    "towncrier>=24.8.0",
-    "opr",
-    "ipython>=8.30.0",
-    "bump-my-version>=0.28.1",
+    "coverage>=7.6.9",
+]
+utils = [
     "rust-just>=1.38.0",
 ]
+versioning = [
+    "towncrier>=24.8.0",
+    "bump-my-version>=0.28.1",
+]
+lint = [
+    "ruff>=0.8.2",
+]
+lsp = [
+    "pylsp-mypy>=0.6.9",
+    "pylsp-rope>=0.1.17",
+    "python-lsp-server>=1.12.0",
+]
+
 
 [project.scripts]
 pycolint = "pycolint.main:main"
@@ -42,13 +49,15 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/pycolint"]
 
+
+[tool.uv]
+default-groups = ["utils", "lint", "versioning", "dev"]
+
 [tool.pytest.ini_options]
 python_files = ["*_test.py", "test_*.py"]
 testpaths = ["test"]
 python_classes = ["*Test", "Test*"]
 
-[tool.uv.sources]
-opr = { git = "https://github.com/glencoe/opr", rev = "0.3.0" }
 
 
 [tool.bumpversion]
