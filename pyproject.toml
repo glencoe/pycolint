@@ -1,6 +1,6 @@
 [project]
 name = "pycolint"
-version = "0.1.0"
+version = "0.2.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -25,6 +25,7 @@ dev = [
     "opr",
     "ipython>=8.30.0",
     "bump-my-version>=0.28.1",
+    "rust-just>=1.38.0",
 ]
 
 [project.scripts]
@@ -65,21 +66,20 @@ parse = """(?x)
 serialize = [
     "{major}.{minor}.{patch}-{pre_label}{distance_to_latest_tag}", # automatically increase pre_number based on commits
     "{major}.{minor}.{patch}",
-    "{major}.{minor}"
     ]
 search = "{current_version}"
 replace = "{new_version}"
 regex = false
 ignore_missing_version = false
 ignore_missing_files = false
-tag = false
+tag = true
 sign_tags = false
 tag_name = "v{new_version}"
-tag_message = "Bump version: {current_version} → {new_version}"
+tag_message = "bump: {current_version} → {new_version}"
 allow_dirty = false
-commit = false
-message = "Bump version: {current_version} → {new_version}"
-commit_args = ""
+commit = true
+message = "bump: {current_version} → {new_version}"
+commit_args = "--no-verify"
 setup_hooks = []
 pre_commit_hooks = []
 post_commit_hooks = []
@@ -87,6 +87,10 @@ post_commit_hooks = []
 [tool.bumpversion.parts.pre_label]
 values = ["dev", "rc", "final"]
 optional_value = "final"
+
+[[tool.bumpversion.files]]
+filename = "pyproject.toml"
+
 
 [tool.towncrier]
 name = "pycolint"
